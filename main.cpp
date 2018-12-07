@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
                 true, "", "string"
         );
 
-        TCLAP::ValueArg<int> repsArg(
+        TCLAP::ValueArg<unsigned int> repsArg(
                 "r", "reps",
                 "Number of reps to simulate", true,
                 1000, "integer"
@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
                 1000, "integer"
         );
 
-        TCLAP::ValueArg<int> seedArg(
+        TCLAP::ValueArg<unsigned int> seedArg(
                 "s", "seed",
                 "Random number seed", false,
                 0, "integer"
@@ -288,9 +288,10 @@ int main(int argc, char** argv) {
             throw std::runtime_error(ss.str());
         }
 
-        int ncat = spec.size();
+        size_t ncat = spec.size();
 
         auto nthreads = threadsArg.getValue();
+        auto rng_seed = seedArg.getValue();
 
         if (nthreads < 1) nthreads = 1;
         if (nthreads > std::thread::hardware_concurrency()) nthreads = std::thread::hardware_concurrency();
@@ -305,8 +306,8 @@ int main(int argc, char** argv) {
         if (nthreads == 1) {
             std::cout << "Using 1 thread" << std::endl;
             // Seed RNG and get result (single thread version)
-            pcg_extras::seed_seq_from<std::random_device> seed;
-            mutation_generator gen(seed, spec, op);
+            //pcg_extras::seed_seq_from<std::random_device> seed;
+            mutation_generator gen(rng_seed, spec, op);
             result.reserve(reps);
             gen.run_reps(reps, n_mut, result, pbar);
         }
@@ -319,16 +320,15 @@ int main(int argc, char** argv) {
             int remainder = reps - (reps_per_thread * nthreads);
             ResultHelper helper(reps);  // thread-safe collector of output
 
-            for (int i = 0; i < nthreads; i++) {
+            for (int thread_id = 0; thread_id < nthreads; thread_id++) {
                 // Make final thread execute remainder of reps, in addition to reps_per_thread
-                if (i == nthreads - 1) reps_per_thread = reps_per_thread + remainder;
+                if (thread_id == nthreads - 1) reps_per_thread = reps_per_thread + remainder;
 
                 // Set up seed_source for thread-local RNG
-                // pcg_extras::seed_seq_from<std::random_device> seed;
-                unsigned int seed = rd();
+                int thread_seed = rng_seed + thread_id;
 
-                threads.push_back(std::thread( [&helper, seed, &spec, &op, &pbar, reps_per_thread, n_mut]() {
-                    mutation_generator gen(seed, spec, op);
+                threads.push_back(std::thread( [&helper, thread_seed, &spec, &op, &pbar, reps_per_thread, n_mut]() {
+                    mutation_generator gen(thread_seed, spec, op);
                     std::vector<RepResult> res_t;
                     res_t.reserve(reps_per_thread);
                     gen.run_reps(reps_per_thread, n_mut, res_t, pbar);
