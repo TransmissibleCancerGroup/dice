@@ -43,11 +43,20 @@ private:
 class ProgressBar {
 public:
     ProgressBar(size_t total) : total(total)  {
-
     }
+
+    ProgressBar(size_t total, int display_freq) : total(total), display_freq(display_freq) {
+    }
+
     void update(size_t done) {
         std::lock_guard<std::mutex> guard(mtx);
         total_done += done;
+        if (total_done % display_freq == 0 || finished()) {
+            display();
+        }
+    }
+
+    void display() {
         std::cerr << "\33[2K\r[";
         int prop_done = ((linewidth - 2) * total_done) / total;
         for (int i = 0; i < prop_done; i++) {
@@ -59,10 +68,16 @@ public:
         std::cerr << "] " << total_done << " / " << total << std::flush;
         //if (total_done >= total) std::cerr << std::endl;
     }
+
+    bool finished() {
+        return total_done >= total;
+    }
+
 private:
     size_t total;
     size_t total_done = 0;
     size_t linewidth = 80;
+    int display_freq = 10;
     std::mutex mtx;
 };
 
@@ -302,7 +317,7 @@ int main(int argc, char** argv) {
 
         std::vector<RepResult> result;
 
-        ProgressBar pbar(reps);
+        ProgressBar pbar(reps, 10);
 
         if (nthreads == 1) {
             std::cout << "Using 1 thread" << std::endl;
